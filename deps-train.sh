@@ -22,6 +22,10 @@
 #                    e.g. CHECK_xdb="make tools generate build test"
 #   REQUIRED_CHECKS  comma-separated checks that must pass on the PR, on top of the
 #                    branch protection ones (default: UnitTest)
+#   IGNORE_CHECKS    comma-separated checks whose result does not count, even when branch
+#                    protection requires them; shell patterns, e.g. "code cov,security/snyk*"
+#                    (default: code cov: an upgrade does not change our coverage, and xdb
+#                    sits on its 80% line). Only --admin can merge past a required one.
 #   CI_TIMEOUT       minutes to wait for the PR checks (default: 90)
 #   MERGE_ADMIN      1 = merge with --admin, which skips the required review
 #   APPROVERS        without MERGE_ADMIN=1: comma-separated GitHub users asked to review
@@ -43,6 +47,7 @@ read -r -a REPOS <<< "${REPOS:-xlog x xdb metrics xpki porto gogentic protoc-gen
 BASE_BRANCH="${BASE_BRANCH:-main}"
 CHECK="${CHECK-make all}"
 CI_TIMEOUT="${CI_TIMEOUT:-90}"
+IGNORE_CHECKS="${IGNORE_CHECKS-code cov}"
 APPROVAL_TIMEOUT="${APPROVAL_TIMEOUT:-120}"
 DRY_RUN="${DRY_RUN:-0}"
 BRANCH_PREFIX="deps/weekly-"
@@ -100,7 +105,21 @@ required_checks() {  # $1 repo: names of the checks that must pass, one per line
     gh api "repos/$OWNER/$1/branches/$BASE_BRANCH" \
       --jq '.protection.required_status_checks.contexts[]?' 2>/dev/null || true
     tr ',' '\n' <<< "${REQUIRED_CHECKS-UnitTest}"
-  } | sed 's/^ *//; s/ *$//; /^$/d' | sort -u
+  } | sed 's/^ *//; s/ *$//; /^$/d' | sort -u | drop_ignored
+}
+
+drop_ignored() {  # stdin: check names or "<name>\t<state>" lines; prints those IGNORE_CHECKS does not match
+  local line p keep pats=()
+  while IFS= read -r p; do [[ -z $p ]] || pats+=("$p"); done \
+    < <(tr ',' '\n' <<< "$IGNORE_CHECKS" | sed 's/^ *//; s/ *$//')
+  while IFS= read -r line; do
+    keep=1
+    for p in "${pats[@]}"; do
+      # $p unquoted on purpose: a shell pattern such as security/snyk*
+      if [[ ${line%%$'\t'*} == $p ]]; then keep=""; fi
+    done
+    if [[ -n $keep ]]; then printf '%s\n' "$line"; fi
+  done
 }
 
 ci_checks() {  # $1 repo, $2 sha: "<name>\t<pass|fail|pending>" for each check run and commit status
@@ -118,11 +137,12 @@ ci_checks() {  # $1 repo, $2 sha: "<name>\t<pass|fail|pending>" for each check r
 wait_ci() {  # $1 repo, $2 sha: 0 once every check passed, 1 on a failure or timeout
   local required checks last="" r missing deadline=$(( SECONDS + CI_TIMEOUT * 60 ))
   required="$(required_checks "$1")"
-  echo "Waiting for the checks on $2, required: ${required//$'\n'/, }"
+  echo "Waiting for the checks on $2, required: ${required//$'\n'/, }; ignored: ${IGNORE_CHECKS:-none}"
   while (( SECONDS < deadline )); do
     sleep 30
     checks="$(ci_checks "$1" "$2")" || continue   # API hiccup: try again
     if [[ $checks != "$last" ]]; then printf '%s\n--\n' "$checks"; last=$checks; fi
+    checks="$(drop_ignored <<< "$checks")"
     if grep -q $'\tfail$' <<< "$checks"; then return 1; fi
     missing=0
     while IFS= read -r r; do
@@ -305,8 +325,10 @@ train_repo() {  # $1 repo
   others="$(git diff --name-only HEAD~1 -- . ':!go.mod' ':!go.sum' | sed 's/^/- /')"
   if [[ -n $others ]]; then body+=$'\n\n'"Also changed by \`$check\`:"$'\n'"$others"; fi
 
-  git push -q --force -u origin "$BRANCH"
-  pr="$(gh pr create -R "$OWNER/$repo" --base "$BASE_BRANCH" --head "$BRANCH" --title "$TITLE" --body "$body")"
+  git push -q --force -u origin "$BRANCH" \
+    || fail "$repo" "Could not push $BRANCH to $OWNER/$repo. Check that DEPS_BOT_TOKEN has Contents: write on it."
+  pr="$(gh pr create -R "$OWNER/$repo" --base "$BASE_BRANCH" --head "$BRANCH" --title "$TITLE" --body "$body")" \
+    || fail "$repo" "Could not open a PR for $BRANCH in $OWNER/$repo. Check that DEPS_BOT_TOKEN has Pull requests: write on it."
   echo "Opened $pr"
 
   # 5. Merge once it is green (and approved), then tag the merge commit.

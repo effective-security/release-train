@@ -24,8 +24,9 @@ Order:
    (localstack and SQL containers for xdb, local KMS and softhsm for xpki) and runs `covtest`.
    The containers are stopped before the next repo.
 3. Opens a `deps/weekly-YYYYMMDD` PR and waits for every check, including the required
-   `UnitTest` and `code cov`. With `MERGE_ADMIN: "0"` it also waits for an approving review
-   (see [Notifications](#notifications)).
+   `UnitTest`. `code cov` does not count (`IGNORE_CHECKS`): upgrading dependencies does not change
+   our coverage, and xdb sits on its 80% line. With `MERGE_ADMIN: "0"` it also waits for an
+   approving review (see [Notifications](#notifications)).
 4. Squash-merges the PR and tags the merge commit the same way the repos' SetTag workflow does:
    `$(cat .VERSION).$(git rev-list --count HEAD)`, for example `v1.0.312`. A push to `main` only
    tags by itself when `.VERSION` changes, so the train does it.
@@ -49,7 +50,8 @@ hand, the next run still tags it.
 
 [`notify.sh`](notify.sh) sends a message when the train stops (a failure, a timeout) and when a
 PR needs an approval. Every channel that has its settings is used; the others are skipped. Set
-them under **Settings > Secrets and variables > Actions** of this repo:
+them under **Settings > Secrets and variables > Actions** of this repo (the variables can also be
+secrets):
 
 | Channel  | Variables                                                 | Secrets                      |
 | -------- | --------------------------------------------------------- | ---------------------------- |
@@ -60,7 +62,8 @@ Email goes through any SMTP server, for example `smtps://smtp.gmail.com:465` wit
 [app password](https://myaccount.google.com/apppasswords), or Amazon SES / SendGrid SMTP
 credentials. `SMTP_FROM` is the sender address; it can stay empty when `SMTP_USER` is an address
 (Gmail), but SES and SendGrid logins are not, so set it to a verified sender there. For Telegram, create a bot with [@BotFather](https://t.me/BotFather), send it a
-message, and read the chat id from `https://api.telegram.org/bot<token>/getUpdates`. To check the
+message, and read the chat id (`"chat":{"id":...}`, not the bot's own id) from
+`https://api.telegram.org/bot<token>/getUpdates`. To check the
 settings, export them and run `./notify.sh "Test" "Hello"`. WhatsApp can be added as another
 function in `notify.sh`.
 
@@ -82,6 +85,6 @@ DRY_RUN=1 CHECK= REPOS="xpki porto" ./deps-train.sh   # only show what would be 
 as a normal checkout, so a local run replaces those containers and the `xpki_unittest` slot.
 
 Other settings (all env vars, documented at the top of the script): `CHECK_<repo>` to replace
-`make all` for one repo, `REQUIRED_CHECKS`, `CI_TIMEOUT`, `WAIT_TAG_CI`, `KEEP_WORK`, and
+`make all` for one repo, `REQUIRED_CHECKS`, `IGNORE_CHECKS`, `CI_TIMEOUT`, `WAIT_TAG_CI`, `KEEP_WORK`, and
 `RELEASE_UNTAGGED=1` to also tag repos that have nothing to upgrade but have commits on `main`
 since their last tag.
