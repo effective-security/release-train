@@ -51,6 +51,9 @@ jobs:
           GH_TOKEN: ${{ secrets.DEPS_BOT_TOKEN }}
         run: gh auth setup-git
 
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3.0.0
+
       - name: Run the train
         # Below the job's 300, so a slow train fails this step and the notify step below still runs.
         timeout-minutes: 285
