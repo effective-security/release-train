@@ -50,8 +50,9 @@ hand, the next run still tags it.
 
 ## Notifications
 
-[`notify.sh`](notify.sh) sends a message when the train stops (a failure, a timeout) and when a
-PR needs an approval. Every channel that has its settings is used; the others are skipped. Set
+[`notify.sh`](notify.sh) sends a message when the train finishes or stops (a failure, a timeout),
+with the same per-repo summary as the run's Actions page, and when a PR needs an approval.
+Dry runs send nothing. Every channel that has its settings is used; the others are skipped. Set
 them under **Settings > Secrets and variables > Actions** of this repo (the variables can also be
 secrets):
 
