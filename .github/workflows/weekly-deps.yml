@@ -50,7 +50,7 @@ jobs:
           GIT_COMMITTER_NAME: deps-bot
           GIT_COMMITTER_EMAIL: deps-bot@users.noreply.github.com
           OWNER: effective-security
-          REPOS: "xlog x xdb metrics xpki porto gogentic" # upstream first!
+          REPOS: "xlog x xdb metrics xpki porto gogentic protoc-gen-go" # upstream first!
           MERGE_ADMIN: "1" # the repos require an approving review; the bot cannot approve its own PR
           START_FROM: ${{ inputs.start_from }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}

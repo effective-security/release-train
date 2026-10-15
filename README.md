@@ -11,6 +11,7 @@ Order:
 - `github.com/effective-security/xpki` -> xlog, x, metrics
 - `github.com/effective-security/porto` -> xlog, x, metrics, xdb, xpki
 - `github.com/effective-security/gogentic` -> xlog, x, metrics, xdb, xpki, porto
+- `github.com/effective-security/protoc-gen-go` -> xlog, x, porto
 
 ## How it works
 
