@@ -52,7 +52,11 @@ jobs:
         run: gh auth setup-git
 
       - name: Install Protoc
-        uses: arduino/setup-protoc@v3.0.0
+        uses: arduino/setup-protoc@v3
+        with:
+          # It looks up the protoc releases through the GitHub API; without a token that is
+          # limited to 60 requests an hour per runner IP, which hosted runners share.
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run the train
         # Below the job's 300, so a slow train fails this step and the notify step below still runs.
