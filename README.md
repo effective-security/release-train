@@ -22,7 +22,9 @@ Order:
    (the module proxy can lag behind a fresh tag).
 2. Runs `make all` in the clone, which installs the tools, starts the environment the tests need
    (localstack and SQL containers for xdb, local KMS and softhsm for xpki) and runs `covtest`.
-   The containers are stopped before the next repo.
+   The containers are stopped before the next repo. Then `go mod tidy`: only after `make all`,
+   because protoc-gen-go's e2e code is generated and not committed, and in a fresh clone tidy
+   would drop the modules that code imports.
 3. Opens a `deps/weekly-YYYYMMDD` PR and waits for every check, including the required
    `UnitTest`. `code cov` does not count (`IGNORE_CHECKS`): upgrading dependencies does not change
    our coverage, and xdb sits on its 80% line. With `MERGE_ADMIN: "0"` it also waits for an
