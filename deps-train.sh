@@ -3,6 +3,7 @@
 #
 # For each repo, in dependency order (upstream first):
 #   1. go get -u, then pin our own modules to the tags created earlier in this run
+#      (go mod tidy runs after step 2, once the check has generated any code)
 #   2. run the repo's own check (default `make all`: installs the tools and starts
 #      the docker / softhsm environment the tests need, then runs covtest)
 #   3. open a PR, wait for CI including the required checks, and for an approval unless
@@ -274,7 +275,7 @@ train_repo() {  # $1 repo
       sleep 30
     done
   done
-  go mod tidy || fail "$repo" "\`go mod tidy\` failed."
+  # No `go mod tidy` yet: it runs after the check, see below.
 
   if git diff --quiet -- go.mod go.sum; then
     sha="$(git rev-parse HEAD)"
@@ -305,6 +306,15 @@ train_repo() {  # $1 repo
     echo "Running: $check"
     bash -c "$check" || fail "$repo" "\`$check\` failed locally after the upgrade."
     compose_down "$dir"
+    # Tidy only now that the check has generated the code that is not committed (protoc-gen-go's
+    # e2e *.pb.go): in a fresh clone tidy would drop the modules only that code imports, and the
+    # check's `go vet` would then fail with "updates to go.mod needed". Without a check, no tidy.
+    go mod tidy || fail "$repo" "\`go mod tidy\` failed after \`$check\`."
+  fi
+  if git diff --quiet -- go.mod go.sum; then   # tidy took back all that go get changed
+    echo "$repo is already up to date after go mod tidy; no new tag."
+    RESULTS+=("$repo: already up to date")
+    return
   fi
 
   # The check may regenerate or reformat tracked files (go generate, gofmt). Keep
