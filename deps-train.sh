@@ -11,6 +11,7 @@
 #   4. squash-merge and tag the merge commit the way the repos' SetTag workflow does:
 #      $(cat .VERSION).$(git rev-list --count HEAD), e.g. v1.0.312
 # A PR left open by a run that stopped is picked up again by the next run.
+# A finished run also notifies, with the same per-repo summary as the Actions page.
 #
 # Env:
 #   OWNER            GitHub org that owns the repos (default: effective-security)
@@ -83,6 +84,10 @@ finish() {
 }
 trap finish EXIT
 
+results_text() {  # the summary for a notification: plain text, one "- repo: ..." line each
+  if (( ${#RESULTS[@]} )); then printf -- '- %s\n' "${RESULTS[@]}" | sed 's/\*\*//g'; fi
+}
+
 fail() {  # $1 repo, $2 message: report it (repo issue + notification) and stop the train
   RESULTS+=("$1: **failed**: $2")
   echo "::error::$1: $2"
@@ -95,7 +100,8 @@ fail() {  # $1 repo, $2 message: report it (repo issue + notification) and stop 
     else
       gh issue create -R "$OWNER/$1" --title "$title" --body "$body" || true
     fi
-    notify "Dependency train stopped at $1" "$body"
+    # The summary has the failure itself, and what the train did before it.
+    notify "Dependency train stopped at $1" "$(results_text)"$'\n\n'"Run: ${RUN_URL:-local run}"
     echo "TRAIN_NOTIFIED=1" >> "${GITHUB_ENV:-/dev/null}"   # the workflow's catch-all skips it
   fi
   exit 1
@@ -363,3 +369,12 @@ done
 
 echo "Train finished. New tags:"
 for m in "${!NEWTAG[@]}"; do echo "  $m ${NEWTAG[$m]}"; done
+
+if [[ $DRY_RUN != 1 ]]; then
+  case ${#NEWTAG[@]} in
+    0) tags="no new tags" ;;
+    1) tags="1 new tag" ;;
+    *) tags="${#NEWTAG[@]} new tags" ;;
+  esac
+  notify "Dependency train finished: $tags" "$(results_text)"$'\n\n'"Run: ${RUN_URL:-local run}"
+fi
