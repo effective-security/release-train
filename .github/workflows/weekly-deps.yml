@@ -1,0 +1,60 @@
+name: Weekly Go dependency train
+
+on:
+  schedule:
+    - cron: "17 11 * * 5" # Friday 06:17 Panama time (11:17 UTC)
+  workflow_dispatch: # "Run workflow" button for manual runs
+    inputs:
+      start_from:
+        description: "Resume from this repo, skipping the ones before it (e.g. xpki)"
+        required: false
+      dry_run:
+        description: "Upgrade and run `make all` only: no PRs, merges or tags"
+        type: boolean
+        default: false
+
+concurrency: deps-train # never run two trains at once
+
+permissions:
+  contents: read # everything else is done with DEPS_BOT_TOKEN
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300 # `make all` runs locally and again in each PR's CI
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false # no go.sum in this repo
+
+      - name: Install test dependencies
+        # softhsm2 for xpki's `make hsmconfig`; docker compose is preinstalled
+        run: sudo apt-get update -q && sudo apt-get install -y -q softhsm2
+
+      - name: Set up git
+        env:
+          GH_TOKEN: ${{ secrets.DEPS_BOT_TOKEN }}
+        run: gh auth setup-git
+
+      - name: Run the train
+        env:
+          # Must be a PAT or app token, not GITHUB_TOKEN: pushes and PRs made with
+          # GITHUB_TOKEN do not trigger the repos' CI.
+          GH_TOKEN: ${{ secrets.DEPS_BOT_TOKEN }}
+          GOTOOLCHAIN: auto # fetch a newer Go when a go.mod asks for it
+          GIT_AUTHOR_NAME: deps-bot
+          GIT_AUTHOR_EMAIL: deps-bot@users.noreply.github.com
+          GIT_COMMITTER_NAME: deps-bot
+          GIT_COMMITTER_EMAIL: deps-bot@users.noreply.github.com
+          OWNER: effective-security
+          REPOS: "xlog x xdb metrics xpki porto gogentic" # upstream first!
+          MERGE_ADMIN: "1" # the repos require an approving review; the bot cannot approve its own PR
+          START_FROM: ${{ inputs.start_from }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          RELEASE_UNTAGGED: "0" # "1" to also tag repos with nothing to upgrade but untagged commits on main
+          WAIT_TAG_CI: "0" # "1" to also wait for the Build run on each new tag
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash ./deps-train.sh
