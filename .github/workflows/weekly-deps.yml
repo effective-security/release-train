@@ -22,6 +22,17 @@ jobs:
   train:
     runs-on: ubuntu-latest
     timeout-minutes: 300 # `make all` runs locally and again in each PR's CI
+    env:
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      # Notifications when the train stops or a PR needs an approval (see notify.sh).
+      # Set them under Settings > Secrets and variables > Actions; empty channels are skipped.
+      NOTIFY_EMAIL: ${{ vars.NOTIFY_EMAIL }} # comma-separated recipients
+      SMTP_URL: ${{ vars.SMTP_URL }} # e.g. smtps://smtp.gmail.com:465
+      SMTP_FROM: ${{ vars.SMTP_FROM }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
     steps:
       - uses: actions/checkout@v7
 
@@ -40,6 +51,8 @@ jobs:
         run: gh auth setup-git
 
       - name: Run the train
+        # Below the job's 300, so a slow train fails this step and the notify step below still runs.
+        timeout-minutes: 285
         env:
           # Must be a PAT or app token, not GITHUB_TOKEN: pushes and PRs made with
           # GITHUB_TOKEN do not trigger the repos' CI.
@@ -52,9 +65,19 @@ jobs:
           OWNER: effective-security
           REPOS: "xlog x xdb metrics xpki porto gogentic protoc-gen-go" # upstream first!
           MERGE_ADMIN: "1" # the repos require an approving review; the bot cannot approve its own PR
+          # With MERGE_ADMIN "0" the train asks APPROVERS for a review, notifies, and waits
+          APPROVERS: ${{ vars.APPROVERS }} # comma-separated GitHub users, not the token's user
+          APPROVAL_TIMEOUT: "120" # minutes
           START_FROM: ${{ inputs.start_from }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           RELEASE_UNTAGGED: "0" # "1" to also tag repos with nothing to upgrade but untagged commits on main
           WAIT_TAG_CI: "0" # "1" to also wait for the Build run on each new tag
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash ./deps-train.sh
+
+      - name: Notify about an unexpected stop
+        # deps-train.sh notifies about the failures it detects itself (and sets TRAIN_NOTIFIED);
+        # this covers the rest, e.g. the job timing out.
+        if: (failure() || cancelled()) && env.TRAIN_NOTIFIED != '1' && !inputs.dry_run
+        run: |
+          bash ./notify.sh "Dependency train did not finish" \
+            "The run failed or was cancelled without a report, for example on a timeout. Run it again to resume. Run: $RUN_URL"
