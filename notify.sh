@@ -10,7 +10,8 @@
 #   SMTP_FROM           sender address; defaults to SMTP_USER when that is an address (Gmail),
 #                       but SES (AKIA...) and SendGrid (apikey) logins are not, so set it there
 # Telegram: create a bot with @BotFather, send it a message, then find the chat id in
-# https://api.telegram.org/bot<token>/getUpdates
+# https://api.telegram.org/bot<token>/getUpdates ("chat":{"id":...}; not the bot's own id,
+# which is the number before the ":" in the token)
 #   TELEGRAM_BOT_TOKEN
 #   TELEGRAM_CHAT_ID
 #
@@ -34,8 +35,11 @@ notify_email() {  # $1 subject, $2 body
 }
 
 notify_telegram() {  # $1 subject, $2 body
-  curl -fsS -o /dev/null "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-    --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$1"$'\n\n'"$2"
+  local out
+  out="$(curl -sS "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+    --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" --data-urlencode "text=$1"$'\n\n'"$2")" || return
+  # Telegram explains a refusal in the reply, e.g. {"ok":false,...,"description":"Bad Request: chat not found"}
+  [[ $out == *'"ok":true'* ]] || { echo "Telegram: $out"; return 1; }
 }
 
 notify() {  # $1 subject, $2 body
@@ -48,7 +52,7 @@ notify() {  # $1 subject, $2 body
     sent=1
     notify_telegram "$1" "$2" || echo "::warning::Could not send the Telegram notification."
   fi
-  [[ -n $sent ]] || echo "No notification channel is configured; not sent: $1" >&2
+  [[ -n $sent ]] || echo "::warning::No notification channel is configured; not sent: $1"
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

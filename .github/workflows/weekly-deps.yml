@@ -26,12 +26,13 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       # Notifications when the train stops or a PR needs an approval (see notify.sh).
       # Set them under Settings > Secrets and variables > Actions; empty channels are skipped.
-      NOTIFY_EMAIL: ${{ vars.NOTIFY_EMAIL }} # comma-separated recipients
-      SMTP_URL: ${{ vars.SMTP_URL }} # e.g. smtps://smtp.gmail.com:465
-      SMTP_FROM: ${{ vars.SMTP_FROM }}
+      # The settings that are not passwords can be either variables or secrets.
+      NOTIFY_EMAIL: ${{ vars.NOTIFY_EMAIL || secrets.NOTIFY_EMAIL }} # comma-separated recipients
+      SMTP_URL: ${{ vars.SMTP_URL || secrets.SMTP_URL }} # e.g. smtps://smtp.gmail.com:465
+      SMTP_FROM: ${{ vars.SMTP_FROM || secrets.SMTP_FROM }}
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+      TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID || secrets.TELEGRAM_CHAT_ID }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
     steps:
       - uses: actions/checkout@v7
@@ -68,6 +69,9 @@ jobs:
           # With MERGE_ADMIN "0" the train asks APPROVERS for a review, notifies, and waits
           APPROVERS: ${{ vars.APPROVERS }} # comma-separated GitHub users, not the token's user
           APPROVAL_TIMEOUT: "120" # minutes
+          # Results that do not block the merge: an upgrade does not change our coverage.
+          # Add "security/snyk*" to also merge past Snyk.
+          IGNORE_CHECKS: "code cov"
           START_FROM: ${{ inputs.start_from }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           RELEASE_UNTAGGED: "0" # "1" to also tag repos with nothing to upgrade but untagged commits on main
